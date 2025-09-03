@@ -43,9 +43,8 @@ public:
     declare_parameter("lidar_frame", "rslidar");
     declare_parameter("base_frame", "base_link");
     declare_parameter("imu_integration_enabled", false);
-    declare_parameter("position_covariance", 0.1);
-    declare_parameter("orientation_covariance", 0.1);
-    declare_parameter("lfu_prune_interval", 10);
+    declare_parameter("position_covariance", 0.01);
+    declare_parameter("orientation_covariance", 0.01);
     // Get parameters
     config.max_distance = get_parameter("max_distance").as_double();
     config.voxel_factor = get_parameter("voxel_factor").as_double();
@@ -54,7 +53,6 @@ public:
     config.max_points_per_voxel = get_parameter("max_points_per_voxel").as_int();
     config.imu_integration_enabled = get_parameter("imu_integration_enabled").as_bool();
     config.odom_downsample = get_parameter("odom_downsample").as_bool();
-    config.lfu_prune_interval = get_parameter("lfu_prune_interval").as_int();
 
     odom_frame_id_ = get_parameter("map_frame").as_string();
     child_frame_id_ = get_parameter("child_frame").as_string();
@@ -121,9 +119,7 @@ private:
       RCLCPP_WARN(get_logger(), "Received empty point cloud, skipping");
       return;
     }
-    pose_mutex.lock();
     Sophus::SE3d diff_from_last_pose = interweaved_pose_ * last_lidar_pose_.inverse();
-    pose_mutex.unlock();
 
     std::vector<Eigen::Vector3d> transformed_points = transformPointCloud(points, lidar_pose_rel_to_base_);
     std::vector<Eigen::Vector3d> unskewed_points;
@@ -143,10 +139,8 @@ private:
       this->publishDebug(std::get<1>(result));
     }
     
-    pose_mutex.lock();
     last_lidar_time_ = current_time;
     last_lidar_pose_ = interweaved_pose_;
-    pose_mutex.unlock();
   }
 
 
@@ -165,8 +159,6 @@ private:
     cloud::convertCloudToMsg(cloud, cloud_msg);
     cloud_pub_->publish(*cloud_msg);
   }
-
-
 
 
   std::vector<Eigen::Vector3d> transformPointCloud(const std::vector<Eigen::Vector3d> &points,
@@ -222,7 +214,6 @@ private:
   rclcpp::SubscriptionOptions imu_subscription_options_;
 
   std::vector<std::pair<Sophus::SE3d, double>> imu_pose_diff_queue;
-  std::mutex pose_mutex;
 
   Eigen::Vector3d linear_velocity_;
   Eigen::Vector3d angular_velocity_;

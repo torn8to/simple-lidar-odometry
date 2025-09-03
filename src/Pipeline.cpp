@@ -47,7 +47,6 @@ std::tuple<Sophus::SE3d, std::vector<Eigen::Vector3d>> Pipeline::odometryUpdate(
 
   const double sigma = threshold.computeThreshold();
 
-  // Update LFU cache with voxels used for alignment
 
   Sophus::SE3d new_position = registration_.alignPointsToMap(
     cloud_voxel_odom,
@@ -63,7 +62,8 @@ std::tuple<Sophus::SE3d, std::vector<Eigen::Vector3d>> Pipeline::odometryUpdate(
   std::vector<Eigen::Vector3d> cloud_voxel_odom_transformed = voxel_map_.transform_cloud(cloud_voxel_odom, new_position);
   
   voxel_map_.addPoints(cloud_voxel_mapping_transformed);
-
+  
+  /** disabling lfu
   for (const auto& point : cloud_voxel_odom_transformed) {
     const Voxel voxel = PointToVoxel(point, max_distance_ / voxel_factor_ * voxel_resolution_beta_);
     voxel_map_.lfuUpdate(voxel);
@@ -73,23 +73,11 @@ std::tuple<Sophus::SE3d, std::vector<Eigen::Vector3d>> Pipeline::odometryUpdate(
     voxel_map_.pruneViaLfu();
     lfu_prune_counter_ = 0;
   }
-  
+  */
+  voxel_map_.removePointsFarFromOrigin(new_position);
   updatePosition(new_position);
   return std::make_tuple(new_position, cloud_voxel_mapping);
 }
-
-
-std::vector<Eigen::Vector3d> Pipeline::removePointsFarFromLocation(const std::vector<Eigen::Vector3d> &cloud,
-                                                                     const Eigen::Vector3d &point){
-    std::vector<Eigen::Vector3d> pruned_points;
-    pruned_points.reserve(cloud.size());
-    for(Eigen::Vector3d cloud_point: cloud){
-      if((cloud_point - point).squaredNorm() <= max_distance_ * max_distance_){
-        pruned_points.push_back(cloud_point);
-      }
-    }
-    return pruned_points;
-  }
 
 
 
