@@ -38,9 +38,8 @@ public:
     declare_parameter("max_points_per_voxel", 27);
     declare_parameter("odom_downsample", true);
     declare_parameter("map_frame", "lid_odom");
-    declare_parameter("odom_frame", "lid_odom");
     declare_parameter("child_frame", "base_link");
-    declare_parameter("lidar_frame", "rslidar");
+    declare_parameter("lidar_frame", "lidar_link");
     declare_parameter("base_frame", "base_link");
     declare_parameter("imu_integration_enabled", false);
     declare_parameter("position_covariance", 0.01);
@@ -86,8 +85,8 @@ public:
     has_first_imu_message = false;
     has_last_lidar_time = false;
     
-    interweaved_pose_ = Sophus::SE3d();
     last_lidar_pose_ = Sophus::SE3d();
+    pose_diff_ = Sophus::SE3d();
 
     RCLCPP_INFO(get_logger(),"Lidar Odometry Node initialized");
   }
@@ -111,26 +110,27 @@ private:
         lidar_pose_acquired = true;
       }
       catch(const std::exception & e){
-        RCLCPP_ERROR(get_logger(), "Failed to lookup transform from %s to %s: %s", base_frame_id_.c_str(), lidar_link_id_.c_str(), e.what());\
+        RCLCPP_ERROR(get_logger(), "Failed to lookup transform from %s to %s: %s", base_frame_id_.c_str(), lidar_link_id_.c_str(), e.what());
         return;
       }
     }
+    
     if (points.empty()) {
       RCLCPP_WARN(get_logger(), "Received empty point cloud, skipping");
       return;
     }
-    Sophus::SE3d diff_from_last_pose = interweaved_pose_ * last_lidar_pose_.inverse();
 
     std::vector<Eigen::Vector3d> transformed_points = transformPointCloud(points, lidar_pose_rel_to_base_);
     std::vector<Eigen::Vector3d> unskewed_points;
     
     if (!timestamps.empty() && timestamps.size() == points.size()) {
-      unskewed_points = cloud::motionDeSkew(transformed_points, timestamps, diff_from_last_pose);
+      unskewed_points = cloud::motionDeSkew(transformed_points, timestamps, pose_diff_);
     } else {
       unskewed_points = transformed_points;
     }
     
-    std::tuple<Sophus::SE3d, std::vector<Eigen::Vector3d>> result = pipeline_->odometryUpdate(unskewed_points);
+    std::tuple<Sophus::SE3d, std::vector<Eigen::Vector3d>> result = pipeline_->odometryUpdate(unskewed_points,
+                                                                                              last_lidar_pose_ * pose_diff_);
     Sophus::SE3d updated_pose = std::get<0>(result);
     pipeline_->updatePosition(updated_pose);
 
@@ -138,26 +138,28 @@ private:
     if (debug_){
       this->publishDebug(std::get<1>(result));
     }
-    
+
+    pose_diff_ = updated_pose * last_lidar_pose_.inverse();
     last_lidar_time_ = current_time;
-    last_lidar_pose_ = interweaved_pose_;
+    last_lidar_pose_ = updated_pose;
   }
 
 
   void publishDebug(const std::vector<Eigen::Vector3d> &cloud){
     if(!pipeline_->mapEmpty()){
       std::vector<Eigen::Vector3d> map  = pipeline_->getMap();
+      std::vector<Eigen::Vector3d> map_relative_pose = transformPointCloud(map,pipeline_->position().inverse());
       sensor_msgs::msg::PointCloud2::SharedPtr map_msg = std::make_shared<sensor_msgs::msg::PointCloud2>();
       map_msg->header.stamp = this->now();
-      map_msg->header.frame_id = odom_frame_id_;
-      cloud::convertCloudToMsg(map, map_msg);
+      map_msg->header.frame_id = base_frame_id_;
+      cloud::convertCloudToMsg(map_relative_pose, map_msg);
       map_pub_->publish(*map_msg);
     }
-    sensor_msgs::msg::PointCloud2::SharedPtr cloud_msg = std::make_shared<sensor_msgs::msg::PointCloud2>();
-    cloud_msg->header.stamp = this->now();
-    cloud_msg->header.frame_id = odom_frame_id_;
-    cloud::convertCloudToMsg(cloud, cloud_msg);
-    cloud_pub_->publish(*cloud_msg);
+    //sensor_msgs::msg::PointCloud2::SharedPtr cloud_msg = std::make_shared<sensor_msgs::msg::PointCloud2>();
+    //cloud_msg->header.stamp = this->now();
+    //cloud_msg->header.frame_id = odom_frame_id_;
+    //cloud::convertCloudToMsg(cloud, cloud_msg);
+    //cloud_pub_->publish(*cloud_msg);
   }
 
 
@@ -234,7 +236,8 @@ private:
   Sophus::SE3d lidar_pose_rel_to_base_;
   Sophus::SE3d imu_pose_rel_to_base_;
 
-  Sophus::SE3d interweaved_pose_; // latest fused pose between imu and lidar_data
+  Sophus::SE3d pose_diff_; // latest fused pose between imu and lidar_data
+  Sophus::SE3d current_lidar_pose; // latest fused pose between imu and lidar_data
   Sophus::SE3d last_lidar_pose_;
 
   std::string odom_frame_id_;

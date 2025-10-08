@@ -18,6 +18,7 @@ Pipeline::Pipeline(const PipelineConfig &config)
     config.max_distance ,
     config.max_points_per_voxel),
     threshold(config.initial_threshold, config.min_motion_threshold, config.max_distance),
+    fixed_threshold_(config.fixed_threshold),
     lfu_prune_counter_(0),
     lfu_prune_interval_(config.lfu_prune_interval){}
 
@@ -44,10 +45,14 @@ std::tuple<Sophus::SE3d, std::vector<Eigen::Vector3d>> Pipeline::odometryUpdate(
   }else{
     initial_guess = position(); 
   }
+  const double sigma;
 
-  const double sigma = threshold.computeThreshold();
-
-
+  if (fixed_threshold_ < 0.0){
+    sigma = threshold.computeThreshold();// adpative thresholding for kiss icp
+   }else{
+    sigma = fixed_threshold_;
+  }
+  //
   Sophus::SE3d new_position = registration_.alignPointsToMap(
     cloud_voxel_odom,
     voxel_map_,
@@ -56,12 +61,9 @@ std::tuple<Sophus::SE3d, std::vector<Eigen::Vector3d>> Pipeline::odometryUpdate(
     sigma);
 
   pose_diff_ = new_position * position().inverse();
-  
   threshold.updateModelDeviation(pose_diff_);
+
   std::vector<Eigen::Vector3d> cloud_voxel_mapping_transformed = voxel_map_.transform_cloud(cloud_voxel_mapping, new_position);
-  std::vector<Eigen::Vector3d> cloud_voxel_odom_transformed = voxel_map_.transform_cloud(cloud_voxel_odom, new_position);
-  
-  voxel_map_.addPoints(cloud_voxel_mapping_transformed);
   
   /** disabling lfu
   for (const auto& point : cloud_voxel_odom_transformed) {
@@ -74,7 +76,8 @@ std::tuple<Sophus::SE3d, std::vector<Eigen::Vector3d>> Pipeline::odometryUpdate(
     lfu_prune_counter_ = 0;
   }
   */
-  voxel_map_.removePointsFarFromOrigin(new_position);
+  voxel_map_.addPoints(cloud_voxel_mapping_transformed);
+  voxel_map_.removePointsFarFromOrigin(new_position.translation());
   updatePosition(new_position);
   return std::make_tuple(new_position, cloud_voxel_mapping);
 }
