@@ -47,7 +47,7 @@ public:
     declare_parameter("/threshold/initial_threshold",0.1);
     declare_parameter("/threshold/min_motion_threshold",2.0);
     declare_parameter("/threshold/fixed_threshold", 0.3);
-    declare_parameter("/registration/num_iterations", 0.5);
+    declare_parameter("/registration/num_iterations", 500);
     declare_parameter("/registration/convergence", 1e-4);
     // Get parameters
     config.max_distance = get_parameter("max_distance").as_double();
@@ -62,7 +62,7 @@ public:
     config.initial_threshold = get_parameter("/threshold/initial_threshold").as_double();
     config.min_motion_threshold = get_parameter("/threshold/min_motion_threshold").as_double();
     config.fixed_threshold = get_parameter("/threshold/fixed_threshold").as_double();
-    config.num_iterations = get_parameter("/registration/num_iterations").as_double();
+    config.num_iterations = get_parameter("/registration/num_iterations").as_int();
     config.convergence = get_parameter("/registration/convergence").as_double();
   
 
