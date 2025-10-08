@@ -29,7 +29,7 @@ Pipeline::~Pipeline() {
 
 std::tuple<Sophus::SE3d, std::vector<Eigen::Vector3d>> Pipeline::odometryUpdate(std::vector<Eigen::Vector3d> &cloud,
                                            const Sophus::SE3d &external_guess,
-                                           bool use_external_guess = false){
+                                           bool use_external_guess){
   std::vector<Eigen::Vector3d> cloud_voxel_odom;
   if (odom_voxel_downsample_){
     cloud_voxel_odom = voxelDownsample(cloud, max_distance_ / voxel_factor_ * voxel_resolution_beta_);
@@ -43,7 +43,7 @@ std::tuple<Sophus::SE3d, std::vector<Eigen::Vector3d>> Pipeline::odometryUpdate(
   if (use_external_guess){
     initial_guess = external_guess;
   }else{
-    initial_guess = position(); 
+    initial_guess = pose_diff_ * position();
   }
   double sigma;
 
@@ -52,8 +52,11 @@ std::tuple<Sophus::SE3d, std::vector<Eigen::Vector3d>> Pipeline::odometryUpdate(
    }else{
     sigma = fixed_threshold_;
   }
-  RCLCPP_INFO(rclcpp::get_logger("pipeline"), "sigma value: %.2f");
-  //
+
+  std::vector map_cloud = voxel_map_.cloud();
+  RCLCPP_INFO(rclcpp::get_logger("pipeline"), "sigma value: %.2f", sigma);
+  RCLCPP_INFO(rclcpp::get_logger("pipeline"), "voxels in map: %lu", cloud.size());
+
   Sophus::SE3d new_position = registration_.alignPointsToMap(
     cloud_voxel_odom,
     voxel_map_,
@@ -65,17 +68,7 @@ std::tuple<Sophus::SE3d, std::vector<Eigen::Vector3d>> Pipeline::odometryUpdate(
   threshold.updateModelDeviation(pose_diff_);
 
   std::vector<Eigen::Vector3d> cloud_voxel_mapping_transformed = voxel_map_.transform_cloud(cloud_voxel_mapping, new_position);
-  
-  /** disabling lfu
-  for (const auto& point : cloud_voxel_odom_transformed) {
-    const Voxel voxel = PointToVoxel(point, max_distance_ / voxel_factor_ * voxel_resolution_beta_); voxel_map_.lfuUpdate(voxel);
-  }
-  // Periodically prune the map using LFU cache information
-  if (++lfu_prune_counter_ >= lfu_prune_interval_) {
-    voxel_map_.pruneViaLfu();
-    lfu_prune_counter_ = 0;
-  }
-  */
+
   voxel_map_.addPoints(cloud_voxel_mapping_transformed);
   voxel_map_.removePointsFarFromOrigin(new_position.translation());
   updatePosition(new_position);

@@ -122,6 +122,7 @@ private:
         lidar_pose_rel_to_base_ = tf2::transformToSophus(transform_stamped);
         lidar_pose_acquired = true;
       }
+
       catch(const std::exception & e){
         RCLCPP_ERROR(get_logger(), "Failed to lookup transform from %s to %s: %s", base_frame_id_.c_str(), lidar_link_id_.c_str(), e.what());
         return;
@@ -142,18 +143,15 @@ private:
       unskewed_points = transformed_points;
     }
     
-    std::tuple<Sophus::SE3d, std::vector<Eigen::Vector3d>> result = pipeline_->odometryUpdate(unskewed_points, last_lidar_pose_ * pose_diff_, true);
+    std::tuple<Sophus::SE3d, std::vector<Eigen::Vector3d>> result = pipeline_->odometryUpdate(unskewed_points, last_lidar_pose_, false);
     Sophus::SE3d updated_pose = std::get<0>(result);
-    pipeline_->updatePosition(updated_pose);
 
-    publishOdometry(msg->header.stamp, updated_pose);
+    publishOdometry(msg->header.stamp, pipeline_->position());
     if (debug_){
       this->publishDebug(std::get<1>(result));
     }
 
-    pose_diff_ = updated_pose * last_lidar_pose_.inverse();
     last_lidar_time_ = current_time;
-    last_lidar_pose_ = updated_pose;
   }
 
 

@@ -30,10 +30,11 @@ namespace cloud{
         auto &voxel_data = query->second;
         if(voxel_data.size() == max_points_per_voxel_ || 
          std::all_of(voxel_data.begin(), voxel_data.end(),
-         [&](const auto &existing_point){return (existing_point - point).norm() > resolution_spacing;})){
-          continue;
-        }else{
+         [&](const auto &existing_point){return (existing_point - point).norm() > resolution_spacing;})
+      ){
           voxel_data.emplace_back(point);
+        }else{
+          continue;
         }
       }
     }
@@ -67,7 +68,7 @@ std::vector<Eigen::Vector3d> VoxelMap::cloud() const {
     std::for_each(map_.begin(), map_.end(),[&](const auto map_element){
                   const std::vector<Eigen::Vector3d> voxel_data = map_element.second;
                   //cloud.insert(cloud.end(), voxel_data.begin(), voxel_data.end());
-                  cloud.push_back(voxel_data[0]);
+                    cloud.push_back(voxel_data[0]);
                   });
     return cloud;
   }
