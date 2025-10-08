@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(lid_odom)
+project(simple-lidar-odometry)
 
 
 add_compile_options(-O3)

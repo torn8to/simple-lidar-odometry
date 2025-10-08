@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>lid_odom</name>
+  <name>simple-lidar-odometry</name>
   <version>0.0.0</version>
   <description>LiDAR Odometry Package</description>
   <maintainer email="nathanroger314@gmail.com">nathan</maintainer>
