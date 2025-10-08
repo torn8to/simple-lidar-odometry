@@ -54,27 +54,12 @@ std::tuple<Sophus::SE3d, std::vector<Eigen::Vector3d>> Pipeline::odometryUpdate(
   }
 
   std::vector map_cloud = voxel_map_.cloud();
-  RCLCPP_INFO(rclcpp::get_logger("pipeline"), "sigma value: %.2f", sigma);
-
-  RCLCPP_INFO(rclcpp::get_logger("pipeline"), "voxels in map: %lu", cloud.size());
-      RCLCPP_INFO(
-        rclcpp::get_logger("example"),
-        "Pose translation: x=%.3f, y=%.3f, z=%.3f",
-        initial_guess.translation().x(), initial_guess.translation().y(), initial_guess.translation().z()
-    );
   Sophus::SE3d new_position = registration_.alignPointsToMap(
     cloud_voxel_odom,
     voxel_map_,
     initial_guess,
     3.0 * sigma,
     sigma);
-
-      RCLCPP_INFO(
-        rclcpp::get_logger("example"),
-        "Pose translation: x=%.3f, y=%.3f, z=%.3f",
-        new_position.translation().x(), new_position.translation().y(), new_position.translation().z()
-  );
-  
 
   pose_diff_ = new_position * position().inverse();
   threshold.updateModelDeviation(pose_diff_);
