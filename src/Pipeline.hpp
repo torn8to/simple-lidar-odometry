@@ -13,18 +13,17 @@ namespace cloud {
 
 struct PipelineConfig {
   double max_distance = 100.0;
-  double voxel_factor = 120;
+  double voxel_factor = 100;
   double voxel_resolution_alpha = 1.5;
   double voxel_resolution_beta = 0.5; // beta is recommended to be smaller for better odom updates
-  bool imu_integration_enabled = false;
   int max_points_per_voxel = 27;
   int num_threads = 16;
   int num_iterations = 500;
   double convergence = 1e-4;
   bool odom_downsample = true;
-  double fixed_threshold = -1.0
   double initial_threshold = 2.0;
   double min_motion_threshold =  0.1;
+  double fixed_threshold = -1.0;
   int lfu_prune_interval = 20;
 };
 
@@ -123,7 +122,7 @@ private:
   Sophus::SE3d current_position_;
   Sophus::SE3d pose_diff_;
   AdaptiveThreshold threshold;
-  double fixed_threshold_ = -1;
+  double fixed_threshold_;
   double voxel_factor_;
   double max_distance_;
   double voxel_resolution_alpha_;

@@ -30,8 +30,7 @@ public:
     //parameter shenanigans
     declare_parameter("publish_transform", true);
     declare_parameter("debug", true);
-    declare_parameter("max_distance", 30.0);
-    declare_parameter("max_distance_odom", 8.0);
+    declare_parameter("max_distance", 100.0);
     declare_parameter("voxel_factor", 100.0);
     declare_parameter("voxel_resolution_alpha", 1.5);
     declare_parameter("voxel_resolution_beta", 0.5);
@@ -41,17 +40,31 @@ public:
     declare_parameter("child_frame", "base_link");
     declare_parameter("lidar_frame", "lidar_link");
     declare_parameter("base_frame", "base_link");
-    declare_parameter("imu_integration_enabled", false);
+    declare_parameter("odom_intgration", false);
     declare_parameter("position_covariance", 0.01);
     declare_parameter("orientation_covariance", 0.01);
+
+    declare_parameter("/threshold/initial_threshold",0.1);
+    declare_parameter("/threshold/min_motion_threshold",2.0);
+    declare_parameter("/threshold/fixed_threshold", 0.3);
+    declare_parameter("/registration/num_iterations", 0.5);
+    declare_parameter("/registration/convergence", 1e-4);
     // Get parameters
     config.max_distance = get_parameter("max_distance").as_double();
     config.voxel_factor = get_parameter("voxel_factor").as_double();
     config.voxel_resolution_alpha = get_parameter("voxel_resolution_alpha").as_double();
     config.voxel_resolution_beta = get_parameter("voxel_resolution_beta").as_double();
     config.max_points_per_voxel = get_parameter("max_points_per_voxel").as_int();
-    config.imu_integration_enabled = get_parameter("imu_integration_enabled").as_bool();
+    //config.imu_integration_enabled = get_parameter("imu_integration_enabled").as_bool();
     config.odom_downsample = get_parameter("odom_downsample").as_bool();
+
+
+    config.initial_threshold = get_parameter("/threshold/initial_threshold").as_double();
+    config.min_motion_threshold = get_parameter("/threshold/min_motion_threshold").as_double();
+    config.fixed_threshold = get_parameter("/threshold/fixed_threshold").as_double();
+    config.num_iterations = get_parameter("/registration/num_iterations").as_double();
+    config.convergence = get_parameter("/registration/convergence").as_double();
+  
 
     odom_frame_id_ = get_parameter("map_frame").as_string();
     child_frame_id_ = get_parameter("child_frame").as_string();
@@ -129,8 +142,7 @@ private:
       unskewed_points = transformed_points;
     }
     
-    std::tuple<Sophus::SE3d, std::vector<Eigen::Vector3d>> result = pipeline_->odometryUpdate(unskewed_points,
-                                                                                              last_lidar_pose_ * pose_diff_);
+    std::tuple<Sophus::SE3d, std::vector<Eigen::Vector3d>> result = pipeline_->odometryUpdate(unskewed_points, last_lidar_pose_ * pose_diff_, true);
     Sophus::SE3d updated_pose = std::get<0>(result);
     pipeline_->updatePosition(updated_pose);
 
@@ -204,7 +216,6 @@ private:
       tf_broadcaster_->sendTransform(transform_stamped);
     }
   }
-
 
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr point_cloud_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;

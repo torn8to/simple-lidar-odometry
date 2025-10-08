@@ -1,5 +1,6 @@
 #include "Pipeline.hpp"
 #include "VoxelUtils.hpp"
+#include <rclcpp/rclcpp.hpp>
 #include <sstream>
 
 namespace cloud {
@@ -11,7 +12,6 @@ Pipeline::Pipeline(const PipelineConfig &config)
     max_distance_(config.max_distance),
     voxel_resolution_alpha_(config.voxel_resolution_alpha),
     voxel_resolution_beta_(config.voxel_resolution_beta),
-    imu_integration_enabled_(config.imu_integration_enabled),
     max_points_per_voxel_(config.max_points_per_voxel),
     odom_voxel_downsample_(config.odom_downsample),
     voxel_map_((config.max_distance/config.voxel_factor) * config.voxel_resolution_alpha,
@@ -29,7 +29,7 @@ Pipeline::~Pipeline() {
 
 std::tuple<Sophus::SE3d, std::vector<Eigen::Vector3d>> Pipeline::odometryUpdate(std::vector<Eigen::Vector3d> &cloud,
                                            const Sophus::SE3d &external_guess,
-                                           bool use_external_guess){
+                                           bool use_external_guess = false){
   std::vector<Eigen::Vector3d> cloud_voxel_odom;
   if (odom_voxel_downsample_){
     cloud_voxel_odom = voxelDownsample(cloud, max_distance_ / voxel_factor_ * voxel_resolution_beta_);
@@ -45,13 +45,14 @@ std::tuple<Sophus::SE3d, std::vector<Eigen::Vector3d>> Pipeline::odometryUpdate(
   }else{
     initial_guess = position(); 
   }
-  const double sigma;
+  double sigma;
 
   if (fixed_threshold_ < 0.0){
     sigma = threshold.computeThreshold();// adpative thresholding for kiss icp
    }else{
     sigma = fixed_threshold_;
   }
+  RCLCPP_INFO(rclcpp::get_logger("pipeline"), "sigma value: %.2f");
   //
   Sophus::SE3d new_position = registration_.alignPointsToMap(
     cloud_voxel_odom,
@@ -67,8 +68,7 @@ std::tuple<Sophus::SE3d, std::vector<Eigen::Vector3d>> Pipeline::odometryUpdate(
   
   /** disabling lfu
   for (const auto& point : cloud_voxel_odom_transformed) {
-    const Voxel voxel = PointToVoxel(point, max_distance_ / voxel_factor_ * voxel_resolution_beta_);
-    voxel_map_.lfuUpdate(voxel);
+    const Voxel voxel = PointToVoxel(point, max_distance_ / voxel_factor_ * voxel_resolution_beta_); voxel_map_.lfuUpdate(voxel);
   }
   // Periodically prune the map using LFU cache information
   if (++lfu_prune_counter_ >= lfu_prune_interval_) {

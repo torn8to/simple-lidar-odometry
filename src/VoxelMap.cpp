@@ -29,9 +29,8 @@ namespace cloud{
       }else{
         auto &voxel_data = query->second;
         if(voxel_data.size() == max_points_per_voxel_ || 
-         std::any_of(voxel_data.begin(), voxel_data.end(),
-         [&](const auto &existing_point){return (existing_point - point).norm()
-          < resolution_spacing;})){
+         std::all_of(voxel_data.begin(), voxel_data.end(),
+         [&](const auto &existing_point){return (existing_point - point).norm() > resolution_spacing;})){
           continue;
         }else{
           voxel_data.emplace_back(point);
