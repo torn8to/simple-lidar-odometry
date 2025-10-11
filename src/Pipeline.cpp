@@ -43,7 +43,7 @@ std::tuple<Sophus::SE3d, std::vector<Eigen::Vector3d>> Pipeline::odometryUpdate(
   if (use_external_guess){
     initial_guess = external_guess;
   }else{
-    initial_guess = pose_diff_ * position();
+    initial_guess = position() * pose_diff_;
   }
   double sigma;
 
@@ -54,6 +54,8 @@ std::tuple<Sophus::SE3d, std::vector<Eigen::Vector3d>> Pipeline::odometryUpdate(
   }
 
   std::vector map_cloud = voxel_map_.cloud();
+  RCLCPP_INFO(rclcpp::get_logger("pipeline"), "sigma value: %.2f", sigma);
+
   Sophus::SE3d new_position = registration_.alignPointsToMap(
     cloud_voxel_odom,
     voxel_map_,
@@ -61,14 +63,16 @@ std::tuple<Sophus::SE3d, std::vector<Eigen::Vector3d>> Pipeline::odometryUpdate(
     3.0 * sigma,
     sigma);
 
-  pose_diff_ = new_position * position().inverse();
-  threshold.updateModelDeviation(pose_diff_);
+  const auto model_error = new_position.inverse() * initial_guess;
+  threshold.updateModelDeviation(model_error);
 
   std::vector<Eigen::Vector3d> cloud_voxel_mapping_transformed = voxel_map_.transform_cloud(cloud_voxel_mapping, new_position);
+  
+  pose_diff_ = position().inverse() * new_position;
+  updatePosition(new_position);
 
   voxel_map_.addPoints(cloud_voxel_mapping_transformed);
   voxel_map_.removePointsFarFromOrigin(new_position.translation());
-  updatePosition(new_position);
   return std::make_tuple(new_position, cloud_voxel_mapping);
 }
 
@@ -87,7 +91,6 @@ std::tuple<Sophus::SE3d, std::vector<Eigen::Vector3d>> Pipeline::odometryUpdate(
 void Pipeline::addToMap(const std::vector<Eigen::Vector3d> &points) {
   voxel_map_.addPoints(points);
 }
-
 
 Sophus::SE3d Pipeline::position() const {
   return current_position_;
