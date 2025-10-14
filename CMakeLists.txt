@@ -22,6 +22,7 @@ find_package(rclcpp REQUIRED)
 find_package(rcutils REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_eigen REQUIRED)
+find_package(tf2_geometry_msgs REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(Sophus REQUIRED)
 find_package(TBB REQUIRED)
@@ -68,13 +69,16 @@ ament_target_dependencies(${PROJECT_NAME}_node
 )
 
 add_executable(${PROJECT_NAME}_inertial_node src/lidar_inertial_odometry_node.cpp)
-target_link_libraries(${PROJECT_NAME}_inertial_node ${PROJECT_NAME}_lib)
+target_link_libraries(${PROJECT_NAME}_inertial_node 
+  ${PROJECT_NAME}_lib
+)
 ament_target_dependencies(${PROJECT_NAME}_inertial_node
   rclcpp
   sensor_msgs
   nav_msgs
   tf2_ros
   tf2_eigen
+  tf2_geometry_msgs
 )
 
 # Install headers

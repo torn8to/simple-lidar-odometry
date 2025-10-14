@@ -1,3 +1,7 @@
+#include <vector>
+#include <tuple>
+#include <algorithm>
+
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 
@@ -11,7 +15,11 @@
  */
 class IMUPreIntegrator{
   public:
-    IMUPreIntegrator(bool has_orientation = false):has_orientation_(has_orientation){}
+    IMUPreIntegrator(bool has_orientation = false,
+                     uint imu_update_queue_size = 1000)
+                    :has_orientation_(has_orientation){
+    imu_update_queue_.reserve(imu_update_queue_size);
+  }
 
     inline void updateTime(double new_time){
       last_time_ = new_time;
@@ -59,11 +67,10 @@ class IMUPreIntegrator{
     *   @param angular_velocity a 3 dimenional vector of acceleration relativ to the imu frame
     *   @param orientation is used only if ha_orientation is enable
     */
-    inline void preIntegration(Eigen::Vector3d linear_acceleration, 
+    inline void preIntegrate(Eigen::Vector3d linear_acceleration, 
                                Eigen::Vector3d angular_velocity,
                                Eigen::Quaterniond orientation,
                                double current_time){
-
 
       if(!has_imu_meas_){
         last_time_ = current_time;
@@ -94,6 +101,11 @@ class IMUPreIntegrator{
         transform_.so3() = transform_.so3() * delta_half_angle;
       }
       last_time_ = current_time;
+      imu_update_queue_.emplace_back(std::make_tuple(
+            linear_acceleration, angular_velocity, orientation, current_time));
+      if(imu_update_queue_.size() == imu_update_queue_.capacity()){
+        imu_update_queue_.erase(imu_update_queue_.begin()) ;
+      }
     }
 
     /**
@@ -104,10 +116,27 @@ class IMUPreIntegrator{
       transform_  = Sophus::SE3d();
       linear_velocity_ = Eigen::Vector3d::Zero();
       has_imu_meas_ = false;
+      imu_update_queue_.clear();
+    }
+
+    inline void pruneImuUpdatesBefore(double time){
+      std::vector<imu_update> new_queue;
+      new_queue.reserve(imu_update_queue_.capacity());
+      std::for_each(imu_update_queue_.begin(),
+                    imu_update_queue_.end(),
+                    [&](const auto update){
+                      if(std::get<double>(update) < time){
+                        new_queue.push_back(update);                       
+                      }
+                    });
+      imu_update_queue_ = new_queue;
     }
     
 
   private:
+    using imu_update = std::tuple<Eigen::Vector3d, Eigen::Vector3d, Eigen::Quaterniond, double>;
+
+    std::vector<imu_update> imu_update_queue_;
     Sophus::SE3d transform_;
     Eigen::Vector3d linear_velocity_{0.0, 0.0, 0.0};
     Eigen::Vector3d gravity_bias_{0.0, 0.0, -9.81};

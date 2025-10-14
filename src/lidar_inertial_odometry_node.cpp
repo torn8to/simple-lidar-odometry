@@ -12,7 +12,10 @@
 #include <mutex>
 
 #include <Eigen/Core>
+#include <Eigen/Geometry>
 #include <sophus/se3.hpp>
+#include <tf2_eigen/tf2_eigen.hpp>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include "Pipeline.hpp"
 #include "PreIntegrator.hpp"
@@ -51,6 +54,8 @@ public:
     declare_parameter("/registration/num_iterations", 500);
     declare_parameter("/registration/convergence", 1e-4);
     declare_parameter("/imu/has_orientation",true);
+    declare_parameter<std::vector<double>>("/imu/linear_acceleration_bias",{0.0,0.0,0.0});
+    declare_parameter<std::vector<double>>("/imu/angular_velocity_bias",{0.0,0.0,0.0});
 
 
     // Get parameters
@@ -69,8 +74,8 @@ public:
     config.num_iterations = get_parameter("/registration/num_iterations").as_int();
     config.convergence = get_parameter("/registration/convergence").as_double();
   
-    imu_integrator = IMUPreIntegrator();
-    imu_integrator.setHasOrientation(get_parameter("/imu/has_orientation").as_bool());
+    imu_integrator_ = IMUPreIntegrator();
+    imu_integrator_.setHasOrientation(get_parameter("/imu/has_orientation").as_bool());
     odom_frame_id_ = get_parameter("map_frame").as_string();
     child_frame_id_ = get_parameter("child_frame").as_string();
     base_frame_id_ = get_parameter("base_frame").as_string();
@@ -89,6 +94,8 @@ public:
       "points", 10, 
       std::bind(&LidarOdometryNode::pointCloudCallback, this, std::placeholders::_1));
 
+    imu_sub_ = this->create_subscription<sensor_msgs::msg::Imu>("imu",10,
+        std::bind(&LidarOdometryNode::imuCallback, this, std::placeholders::_1));
 
     odom_pub_ = this->create_publisher<nav_msgs::msg::Odometry>("lid_odom", 10);
     map_pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>("voxel_map", 10);
@@ -96,9 +103,6 @@ public:
     
     lidar_pose_acquired = false;
     imu_pose_acquired = false;
-
-    linear_velocity_ = Eigen::Vector3d::Zero();
-    angular_velocity_ = Eigen::Vector3d::Zero();
     
     has_first_imu_message = false;
     has_last_lidar_time = false;
@@ -106,14 +110,28 @@ public:
     last_lidar_pose_ = Sophus::SE3d();
     pose_diff_ = Sophus::SE3d();
 
-    RCLCPP_INFO(get_logger(),"Lidar Odometry Node initialized");
+    RCLCPP_INFO(get_logger(),"Lidar Inertial Odometry Node initialized");
   }
 
 private:
 
   void imuCallback(const sensor_msgs::msg::Imu::SharedPtr msg){
+    Eigen::Vector3d linear_acceleration;
+    Eigen::Vector3d angular_velocity;
+    Eigen::Quaterniond orientation;
 
+    tf2::fromMsg(msg->linear_acceleration, linear_acceleration);
+    tf2::fromMsg(msg->angular_velocity, angular_velocity);
+    tf2::fromMsg(msg->orientation, orientation);
+    rclcpp::Time msg_time = msg->header.stamp;
 
+    imu_data_mutex_.lock();
+    imu_integrator_.preIntegrate(linear_acceleration,
+                               angular_velocity, 
+                               orientation,
+                               msg_time.seconds());
+
+    imu_data_mutex_.unlock();
   }
 
   void pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
@@ -236,14 +254,7 @@ private:
 
   std::vector<std::pair<Sophus::SE3d, double>> imu_pose_diff_queue;
 
-  IMUPreIntegrator imu_integrator;
-
-  Eigen::Vector3d linear_velocity_;
-  Eigen::Vector3d angular_velocity_;
-  
-  Eigen::Vector3d linear_acceleration_bias_;
-  Eigen::Vector3d angular_velocity_bias_;
-  Eigen::Vector3d gravity_;
+  IMUPreIntegrator imu_integrator_;
   
   std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
   tf2_ros::Buffer buffer_;
@@ -254,9 +265,11 @@ private:
 
   rclcpp::Time last_time_;  
   rclcpp::Time last_lidar_time_;  
+
+  std::mutex imu_data_mutex_;
+  
   Sophus::SE3d lidar_pose_rel_to_base_;
   Sophus::SE3d imu_pose_rel_to_base_;
-
   Sophus::SE3d pose_diff_; // latest fused pose between imu and lidar_data
   Sophus::SE3d current_lidar_pose; // latest fused pose between imu and lidar_data
   Sophus::SE3d last_lidar_pose_;
