@@ -67,8 +67,8 @@ std::vector<Eigen::Vector3d> VoxelMap::cloud() const {
     cloud.reserve(map_.size() * static_cast<size_t>(max_points_per_voxel_));
     std::for_each(map_.begin(), map_.end(),[&](const auto map_element){
                   const std::vector<Eigen::Vector3d> voxel_data = map_element.second;
-                  cloud.insert(cloud.end(), voxel_data.begin(), voxel_data.end());
-                  //cloud.push_back(voxel_data[0]);
+                  //cloud.insert(cloud.end(), voxel_data.begin(), voxel_data.end());
+                  cloud.push_back(voxel_data[0]);
                   });
     return cloud;
   }

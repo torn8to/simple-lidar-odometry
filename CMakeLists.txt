@@ -1,6 +1,5 @@
-cmake_minimum_required(VERSION 3.8)
+cmake_minimum_required(VERSION 3.12)
 project(simple-lidar-odometry)
-
 
 add_compile_options(-O3)
 #add_compile_options(-g)
@@ -68,9 +67,19 @@ ament_target_dependencies(${PROJECT_NAME}_node
   tf2_eigen
 )
 
+add_executable(${PROJECT_NAME}_inertial_node src/lidar_inertial_odometry_node.cpp)
+target_link_libraries(${PROJECT_NAME}_inertial_node ${PROJECT_NAME}_lib)
+ament_target_dependencies(${PROJECT_NAME}_inertial_node
+  rclcpp
+  sensor_msgs
+  nav_msgs
+  tf2_ros
+  tf2_eigen
+)
+
 # Install headers
 install(
-  DIRECTORY include/ src/
+  DIRECTORY include/
   DESTINATION include
   FILES_MATCHING PATTERN "*.hpp"
 )

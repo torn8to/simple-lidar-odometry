@@ -5,65 +5,116 @@
 #include <sophus/so3.hpp>
 
 
-
+/**
+ * this class handles imu preIntegration for being used to plug into lidar odomerty
+ *
+ */
 class IMUPreIntegrator{
   public:
-    default IMUPreIntegrator():has_orientation_(has_orientation){}
+    IMUPreIntegrator(bool has_orientation = false):has_orientation_(has_orientation){}
 
     inline void updateTime(double new_time){
       last_time_ = new_time;
     }
-
+    // returns the current_time_ v. last_time
     inline double lastTime(){return last_time_;}
 
+    /**
+     *  sets whether or not the 
+     */
+    inline void setHasOrientation(bool has_orientation){
+      has_orientation_ = has_orientation;
+    }
+
+    /**
+     *  mutator method that passes a reference to the underlying you just set 
+     *  the this as lhs of a move semantics statement
+     *  integrator.transform = Sophus::SE3d();
+     */
     inline Sophus::SE3d& transform(){
       return transform_;
     }
 
-    inline void preIntegration(Eigen::Vector3d acceleration, 
-                               Eigen::Matrix3d acceleration_covariance,
+    /**
+     *  a getter method that passes the trnasform
+     */
+    inline Sophus::SE3d const getTransform(){
+      return transform_;
+    }
+    
+
+    inline Eigen::Vector3d& angular_velocity_bias(){
+      return angular_velocity_bias_;
+    }
+
+
+    inline Eigen::Vector3d const getAngularVelocityBias(){
+      return angular_velocity_bias_;
+    }
+
+    /**
+    *   This method integrates the imu data it takes in imu msg outputs to be used for pre integration.  Ensure that has_orientation_ has been set to the right state before using
+    *   @param acceleration a 3 dimenional vector of acceleration relativ to the imu frame
+    * 
+    *   @param angular_velocity a 3 dimenional vector of acceleration relativ to the imu frame
+    *   @param orientation is used only if ha_orientation is enable
+    */
+    inline void preIntegration(Eigen::Vector3d linear_acceleration, 
                                Eigen::Vector3d angular_velocity,
-                               Eigen::Matrix3d acceleration_covariance,
-                               Eigen::Quateniond orientation,
-                               Eigen::Matrix3d orientation_covariance,
-                               double current_time, ){
+                               Eigen::Quaterniond orientation,
+                               double current_time){
 
 
-      if(last_time_ < 0.0){
-        // if time has not been set do not integrate and 
-        current_time = last_time_;
+      if(!has_imu_meas_){
+        last_time_ = current_time;
+        has_imu_meas_ = true;
       }
 
-      if(orientation_covariance[0]  == -1.0){
-        has_orientation_ = false;  
-        transform_.so3() = Sophus::so3d(angular_acceleration);
+      if(has_orientation_){
+        transform_.so3() = Sophus::SO3d(orientation);
       }
+      //  angular velocity handling
       double dt = current_time - last_time_;
-      Eigen::Vector3d processed_linear_acceleration = acceleration - linear_acceleration_bias_;
       Eigen::Vector3d processed_angular_velocity = angular_velocity - angular_velocity_bias_;
-      Eigen::Vector3d delta_position  =  dx * processed_linear_velocity;
-      Eigen::Vector3d delta_angle  =  dx * (processed_angular_velocity + angular_velocity)/2; // averaging this step and last step of velocity component
+      Eigen::Vector3d delta_angle  =  dt * (processed_angular_velocity + angular_velocity)/2;
       Sophus::SO3d delta_half_angle = transform_.so3().exp(delta_angle/2);
-      if(!has_orientation_){
-        transform.so3() = transform.so3() * delta_half_angle;
-      }
-      transform.translation() = (transform.so3() * linear_velocity) + transform_.translation();
+
       if(!has_orientation_){
         transform_.so3() = transform_.so3() * delta_half_angle;
       }
+      // handling acceleration
+      Eigen::Vector3d delta_linear_velocity = dt * (linear_acceleration + 
+                                                  transform_.so3().inverse() * gravity_bias_
+                                                  - linear_acceleration_bias_);
 
+      transform_.translation() = (transform_.so3() * (delta_linear_velocity/2.0 + linear_velocity_)) 
+                                                    + transform_.translation();
+      linear_velocity_ += delta_linear_velocity;
+      if(!has_orientation_){
+        transform_.so3() = transform_.so3() * delta_half_angle;
+      }
+      last_time_ = current_time;
+    }
 
+    /**
+    * resets state to default 
+    * has_orientation_ is not reset to false its state is preserved
+    */
+    inline void reset(){
+      transform_  = Sophus::SE3d();
+      linear_velocity_ = Eigen::Vector3d::Zero();
+      has_imu_meas_ = false;
     }
     
 
   private:
-    Sophus::SE3d transform_; Eigen::Vector3d linear_velocity_{0.0, 0.0, 0.0};
-    Eigen::Vector3d gravity_bias{0.0, 0.0, -9.81};
-    Eigen::Vector3d linar_velocity_bias_{0.0,0.0, 0.0};
+    Sophus::SE3d transform_;
+    Eigen::Vector3d linear_velocity_{0.0, 0.0, 0.0};
+    Eigen::Vector3d gravity_bias_{0.0, 0.0, -9.81};
+    Eigen::Vector3d angular_velocity_bias_{0.0,0.0, 0.0};
     Eigen::Vector3d linear_acceleration_bias_{0.0, 0.0, 0.0};
-    Eigen::Vector3d final_angular_acceleration{0.0, 0.0, 0.0};
 
     double last_time_ = -1;
     bool has_orientation_ = false; 
     bool has_imu_meas_ = false; 
-}
+};
