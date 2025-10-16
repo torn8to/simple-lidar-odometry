@@ -1,9 +1,10 @@
 #include <vector>
 #include <tuple>
 
-#include"Registration.hpp"
+#include "Registration.hpp"
 #include "VoxelMap.hpp"
 #include "PointToVoxel.hpp"
+
 #include <rclcpp/rclcpp.hpp>
 
 #include <tbb/blocked_range.h>
@@ -39,7 +40,6 @@ Correspondences DataAssociation(const std::vector<Eigen::Vector3d> &points,
     Correspondences correspondences;
     correspondences.reserve(points.size());
     tbb::parallel_for(
-        // Range
         tbb::blocked_range<points_iterator>{points.cbegin(), points.cend()},
         [&](const tbb::blocked_range<points_iterator> &r) {
               std::for_each(r.begin(), r.end(), [&](const auto &point) {
@@ -57,48 +57,46 @@ Correspondences DataAssociation(const std::vector<Eigen::Vector3d> &points,
 
 
 
-LinearSystem BuildLinearSystem(const Correspondences &correspondences,
-                               const double kernel_scale) {
+LinearSystem BuildLinearSystemsAndReduce(const Correspondences &correspondences,
+                                         const double kernel_scale) {
+    double kernel_scale_squared = square(kernel_scale);// an optimization to reduce the amount of square calls
     auto compute_jacobian_and_residual = [](const auto &correspondence) {
         const Eigen::Vector3d& source = correspondence.first;
         const Eigen::Vector3d& target = correspondence.second;
         const Eigen::Vector3d residual = source - target;
-        Eigen::Matrix36d J_r;
-        J_r.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity();
-        J_r.block<3, 3>(0, 3) = -1.0 * Sophus::SO3d::hat(source);
-        return std::make_tuple(J_r, residual);
+        Eigen::Matrix36d jacobianResidual;
+        jacobianResidual.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity();
+        jacobianResidual.block<3, 3>(0, 3) = -1.0 * Sophus::SO3d::hat(source);
+        return std::make_tuple(jacobianResidual, residual);
     };
 
+    // first one is not a reference as the behavior of the reduce with tbb requires it not to be
     auto sum_linear_systems = [](LinearSystem a, const LinearSystem &b) {
         a.first = a.first + b.first;
         a.second = a.second + b.second;
         return a;
     };
 
-    auto GM_weight = [&](const double &residual2) {
-        return square(kernel_scale) / square(kernel_scale + residual2);
+    auto GM_weight = [&](const double residualSquared) {
+        return kernel_scale_squared / square(kernel_scale + residualSquared);
     };
 
     using correspondence_iterator = Correspondences::const_iterator;
     LinearSystem result = tbb::parallel_reduce(
-        // Range
-        tbb::blocked_range<correspondence_iterator>{correspondences.cbegin(),
+        tbb::blocked_range<Correspondences::const_iterator>{correspondences.cbegin(),
                                                     correspondences.cend()},
-        // Identity
         LinearSystem(Eigen::Matrix6d::Zero(), Eigen::Vector6d::Zero()),
-        // 1st Lambda: Parallel computation
         [&](const tbb::blocked_range<correspondence_iterator> &r, LinearSystem J) -> LinearSystem {
             return std::transform_reduce(
                 r.begin(), r.end(), J, sum_linear_systems, [&](const auto &correspondence) {
                     std::tuple<Eigen::Matrix36d, Eigen::Vector3d> jr_result = compute_jacobian_and_residual(correspondence);
-                    const Eigen::Matrix36d& J_r = std::get<0>(jr_result);
+                    const Eigen::Matrix36d& jacobianResidual = std::get<0>(jr_result);
                     const Eigen::Vector3d& residual = std::get<1>(jr_result);
                     const double w = GM_weight(residual.squaredNorm());
-                    return LinearSystem(J_r.transpose() * w * J_r,
-                                        J_r.transpose() * w * residual);
+                    return LinearSystem(jacobian_residual.transpose() * w * jacobian_residual,
+                                        jacobian_residual.transpose() * w * residual);
                 });
         },
-        // 2nd Lambda: Parallel reduction of the private Jacboians
         sum_linear_systems);
 
     return result;
