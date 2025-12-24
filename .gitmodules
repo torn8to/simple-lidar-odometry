@@ -1,0 +1,3 @@
+[submodule "loop_closure_detector"]
+	path = loop_closure_detector
+	url = https://github.com/torn8to/loop_closure_detector.git
