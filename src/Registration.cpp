@@ -26,13 +26,13 @@ using LinearSystem = std::pair<Eigen::Matrix6d, Eigen::Vector6d>;
 
 namespace{
 
-inline double square(double x) { return x * x; }
 
-void TransformPoints(const Sophus::SE3d &T, std::vector<Eigen::Vector3d> &points) {
+void TransformPointsInplace(const Sophus::SE3d &T, std::vector<Eigen::Vector3d> &points) {
     std::transform(points.cbegin(), points.cend(), points.begin(),
                    [&](const auto &point) { return T * point; });
 }
 
+inline double square(double x) { return x * x; }
 Correspondences DataAssociation(const std::vector<Eigen::Vector3d> &points,
                                 const cloud::VoxelMap &voxel_map,
                                 const double max_correspondance_distance) {
@@ -93,8 +93,8 @@ LinearSystem BuildLinearSystemsAndReduce(const Correspondences &correspondences,
                     const Eigen::Matrix36d& jacobianResidual = std::get<0>(jr_result);
                     const Eigen::Vector3d& residual = std::get<1>(jr_result);
                     const double w = GM_weight(residual.squaredNorm());
-                    return LinearSystem(jacobian_residual.transpose() * w * jacobian_residual,
-                                        jacobian_residual.transpose() * w * residual);
+                    return LinearSystem(jacobianResidual.transpose() * w * jacobianResidual,
+                                        jacobianResidual.transpose() * w * residual);
                 });
         },
         sum_linear_systems);
@@ -119,20 +119,23 @@ Sophus::SE3d Registration::alignPointsToMap(const std::vector<Eigen::Vector3d> &
                                             const double max_distance,
                                             const double kernel_scale){
   std::vector<Eigen::Vector3d> source = points;
-  TransformPoints(initial_guess, source);
+  TransformPointsInplace(initial_guess, source);
   int num_iterations;
   Sophus::SE3d T_icp = Sophus::SE3d();
   for (int j = 0; j < max_num_iterations_; ++j) {
     const auto correspondences = DataAssociation(source, voxel_map, max_distance);
-    LinearSystem linearSystem = BuildLinearSystem(correspondences, kernel_scale);
+    LinearSystem linearSystem = BuildLinearSystemsAndReduce(correspondences, kernel_scale);
+    // Eval system
     const Eigen::Matrix6d& JTJ = linearSystem.first;
     const Eigen::Vector6d& JTr = linearSystem.second;
     const Eigen::Vector6d dx = JTJ.ldlt().solve(-JTr);
     const Sophus::SE3d estimation = Sophus::SE3d::exp(dx);
-    TransformPoints(estimation, source);
+    // update cloud and estimates
+    TransformPointsInplace(estimation, source);
     T_icp = estimation * T_icp;
-    num_iterations = j;
+    num_iterations=j;
     if (dx.norm() < convergence_) break;
   }
+  RCLCPP_INFO(rclcpp::get_logger("registration"), "number of icp iterations %d", num_iterations);
   return T_icp * initial_guess;
 }

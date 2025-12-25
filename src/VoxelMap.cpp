@@ -111,24 +111,5 @@ void VoxelMap::removePointsFarFromOrigin(const Eigen::Vector3d& origin){
   }
 }
 
-
-void VoxelMap::lfuUpdate(const cloud::Voxel &voxel){
-  lfu_cache_.put(voxel);
-}
-
-int VoxelMap::lfuGet(const cloud::Voxel &voxel){
-  return lfu_cache_.get(voxel);
-}
-
-void VoxelMap::pruneViaLfu(){
-  for(auto it = map_.begin(); it != map_.end(); ++it){
-    auto voxel = it->first;
-    if(!(lfuGet(voxel) > 0)){
-      map_.erase(voxel);
-    }
-  }
-}
-
-
 }  // namespace cloud
 

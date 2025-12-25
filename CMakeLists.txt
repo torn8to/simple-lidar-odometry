@@ -90,7 +90,7 @@ install(
 
 # Install library and executables
 install(
-  TARGETS ${PROJECT_NAME}_lib ${PROJECT_NAME}_node 
+  TARGETS ${PROJECT_NAME}_lib ${PROJECT_NAME}_node ${PROJECT_NAME}_inertial_node
   EXPORT export_${PROJECT_NAME}
   LIBRARY DESTINATION lib
   ARCHIVE DESTINATION lib

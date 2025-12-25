@@ -53,9 +53,6 @@ std::tuple<Sophus::SE3d, std::vector<Eigen::Vector3d>> Pipeline::odometryUpdate(
     sigma = fixed_threshold_;
   }
 
-  std::vector map_cloud = voxel_map_.cloud();
-  RCLCPP_INFO(rclcpp::get_logger("pipeline"), "sigma value: %.2f", sigma);
-
   Sophus::SE3d new_position = registration_.alignPointsToMap(
     cloud_voxel_odom,
     voxel_map_,

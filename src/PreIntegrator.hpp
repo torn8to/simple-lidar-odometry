@@ -8,6 +8,7 @@
 #include <sophus/se3.hpp>
 #include <sophus/so3.hpp>
 
+#include <rclcpp/rclcpp.hpp>
 
 /**
  * this class handles imu preIntegration for being used to plug into lidar odomerty
@@ -90,12 +91,24 @@ class IMUPreIntegrator{
         transform_.so3() = transform_.so3() * delta_half_angle;
       }
       // handling acceleration
-      Eigen::Vector3d delta_linear_velocity = dt * (linear_acceleration + 
+      Eigen::Vector3d delta_linear_velocity = dt * (linear_acceleration - 
                                                   transform_.so3().inverse() * gravity_bias_
                                                   - linear_acceleration_bias_);
 
+      RCLCPP_INFO(rclcpp::get_logger("odometry"), "the delta_linear_velocity is %a %a %a",
+                  delta_linear_velocity.x(),
+                  delta_linear_velocity.y(),
+                  delta_linear_velocity.z());
+
+
+      RCLCPP_INFO(rclcpp::get_logger("odometry"), "the linear_velocity is %a %a %a",
+                  linear_velocity_.x(),
+                  linear_velocity_.y(),
+                  linear_velocity_.z());
+
       transform_.translation() = (transform_.so3() * (delta_linear_velocity/2.0 + linear_velocity_)) 
                                                     + transform_.translation();
+
       linear_velocity_ += delta_linear_velocity;
       if(!has_orientation_){
         transform_.so3() = transform_.so3() * delta_half_angle;

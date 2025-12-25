@@ -6,7 +6,6 @@
 #include <Eigen/Core>
 #include <sophus/se3.hpp>
 #include "PointToVoxel.hpp"
-#include "LFUCache.hpp"
 
 
 namespace cloud {
@@ -16,7 +15,6 @@ class VoxelMap {
     : voxel_resolution_(voxel_resolution),
       max_range_(max_range),
       max_points_per_voxel_(max_points_per_voxel),
-      lfu_cache_(lfu_capacity)
     {
     map_.reserve(999983);
     }
@@ -30,15 +28,11 @@ class VoxelMap {
     std::vector<Eigen::Vector3d> cloud() const;
     std::tuple<Eigen::Vector3d, double> firstNearestNeighborQuery(const Eigen::Vector3d &point) const;
     void removePointsFarFromOrigin(const Eigen::Vector3d &origin);
-    void lfuUpdate(const cloud::Voxel &voxel);
-    int lfuGet(const cloud::Voxel &voxel);
-    void pruneViaLfu();
 
   private:
     double voxel_resolution_;
     double max_range_;
     int max_points_per_voxel_;
-    LFUCache lfu_cache_;
     std::unordered_map<cloud::Voxel, std::vector<Eigen::Vector3d>> map_;
   };
 }
