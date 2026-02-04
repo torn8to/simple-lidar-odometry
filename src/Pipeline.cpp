@@ -27,7 +27,7 @@ Pipeline::~Pipeline() {
 }
 
 
-std::tuple<Sophus::SE3d, std::vector<Eigen::Vector3d>> Pipeline::odometryUpdate(std::vector<Eigen::Vector3d> &cloud,
+std::tuple<Sophus::SE3d, Sophus::SE3d, std::vector<Eigen::Vector3d>> Pipeline::odometryUpdate(std::vector<Eigen::Vector3d> &cloud,
                                            const Sophus::SE3d &external_guess,
                                            bool use_external_guess){
   std::vector<Eigen::Vector3d> cloud_voxel_odom;
@@ -70,7 +70,7 @@ std::tuple<Sophus::SE3d, std::vector<Eigen::Vector3d>> Pipeline::odometryUpdate(
 
   voxel_map_.addPoints(cloud_voxel_mapping_transformed);
   voxel_map_.removePointsFarFromOrigin(new_position.translation());
-  return std::make_tuple(new_position, cloud_voxel_mapping);
+  return std::make_tuple(new_position, pose_diff_ cloud_voxel_mapping);
 }
 
 

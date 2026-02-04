@@ -19,6 +19,7 @@ find_package(sensor_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_components REQUIRED)
 find_package(rcutils REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_eigen REQUIRED)
@@ -58,17 +59,39 @@ target_link_libraries(${PROJECT_NAME}_lib
 )
 
 # Create the executable node
-add_executable(${PROJECT_NAME}_node src/lid_odom_node.cpp)
-target_link_libraries(${PROJECT_NAME}_node ${PROJECT_NAME}_lib)
-ament_target_dependencies(${PROJECT_NAME}_node
+# Create the component library
+add_library(${PROJECT_NAME}_component SHARED src/LidarOdometryComponent.cpp)
+target_compile_features(${PROJECT_NAME}_component PUBLIC cxx_std_17)
+target_include_directories(${PROJECT_NAME}_component PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+ament_target_dependencies(${PROJECT_NAME}_component
   rclcpp
+  rclcpp_components
   sensor_msgs
   nav_msgs
+  geometry_msgs
   tf2_ros
   tf2_eigen
+  Sophus
+)
+target_link_libraries(${PROJECT_NAME}_component
+  ${PROJECT_NAME}_lib
+)
+rclcpp_components_register_nodes(${PROJECT_NAME}_component "LidarOdometryNode")
+
+# Create the executable node
+add_executable(${PROJECT_NAME}_node src/LidarOdometryNode.cpp)
+target_link_libraries(${PROJECT_NAME}_node
+  ${PROJECT_NAME}_component
+)
+ament_target_dependencies(${PROJECT_NAME}_node
+  rclcpp
 )
 
-add_executable(${PROJECT_NAME}_inertial_node src/lidar_inertial_odometry_node.cpp)
+add_executable(${PROJECT_NAME}_inertial_node src/LidarInertialOdometryNode.cpp)
 target_link_libraries(${PROJECT_NAME}_inertial_node 
   ${PROJECT_NAME}_lib
 )
@@ -90,7 +113,7 @@ install(
 
 # Install library and executables
 install(
-  TARGETS ${PROJECT_NAME}_lib ${PROJECT_NAME}_node ${PROJECT_NAME}_inertial_node
+  TARGETS ${PROJECT_NAME}_lib ${PROJECT_NAME}_component ${PROJECT_NAME}_node ${PROJECT_NAME}_inertial_node
   EXPORT export_${PROJECT_NAME}
   LIBRARY DESTINATION lib
   ARCHIVE DESTINATION lib

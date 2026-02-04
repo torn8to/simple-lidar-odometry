@@ -52,7 +52,7 @@ public:
    * @param use_external_guess Whether to use the external pose guess (optional)
    * @return A tuple containing the updated pose and the voxelized cloud
    */
-  std::tuple<Sophus::SE3d, std::vector<Eigen::Vector3d>> odometryUpdate(
+  std::tuple<Sophus::SE3d, Sophus::SE3d, std::vector<Eigen::Vector3d>> odometryUpdate(
       std::vector<Eigen::Vector3d> &cloud,
       const Sophus::SE3d &external_guess = Sophus::SE3d(),
       bool use_external_guess = false);
