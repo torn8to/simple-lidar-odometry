@@ -32,7 +32,7 @@ inline std::vector<Eigen::Vector3d> motionDeSkew(const std::vector<Eigen::Vector
                                          const Sophus::SE3d &relative_motion){
   assert(cloud.size() == cloud_timestamps.size() && "Cloud and timestamps must have the same size");
   std::vector<Eigen::Vector3d> compensated_cloud;
-  compensated_cloud.reserve(cloud.size());
+  compensated_cloud.resize(cloud.size());
   auto cloud_it = cloud.begin();
   auto timestamps_it = cloud_timestamps.begin();
   double begin_time = cloud_timestamps.front();
@@ -40,14 +40,14 @@ inline std::vector<Eigen::Vector3d> motionDeSkew(const std::vector<Eigen::Vector
   const auto omega = relative_motion.log();
 
   tbb::parallel_for( 
-    tbb::blocked_range<size_t>{0, compensated_cloud.size()},
+    tbb::blocked_range<size_t>{0, cloud.size()},
       [&]( const tbb::blocked_range<size_t> &r){
       for(size_t idx = r.begin(); idx <r.end(); ++idx){
         const Eigen::Vector3d &point = cloud.at(idx);
-        const auto  norm_dt = (cloud_timestamps.at(idx)) - begin_time/(last_time- begin_time);
-        compensated_cloud.at(idx) = Sophus::SE3d::exp(omega*norm_dt) *point;
+        const auto norm_dt = (cloud_timestamps.at(idx)) - begin_time/(last_time- begin_time);
+        compensated_cloud.at(idx) = Sophus::SE3d::exp(omega*norm_dt) * point;
       };});
-      return compensated_cloud;
-    }
+    return compensated_cloud;
+  }
 
 } // namespace cloud

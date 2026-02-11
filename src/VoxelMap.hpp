@@ -11,10 +11,10 @@
 namespace cloud {
 class VoxelMap {
   public:
-    explicit VoxelMap(double voxel_resolution, double max_range, int max_points_per_voxel, int lfu_capacity = 20000)
+    explicit VoxelMap(double voxel_resolution, double max_range, int max_points_per_voxel)
     : voxel_resolution_(voxel_resolution),
       max_range_(max_range),
-      max_points_per_voxel_(max_points_per_voxel),
+      max_points_per_voxel_(max_points_per_voxel)
     {
     map_.reserve(999983);
     }

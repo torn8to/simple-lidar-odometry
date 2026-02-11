@@ -87,22 +87,32 @@ add_executable(${PROJECT_NAME}_node src/LidarOdometryNode.cpp)
 target_link_libraries(${PROJECT_NAME}_node
   ${PROJECT_NAME}_component
 )
+
 ament_target_dependencies(${PROJECT_NAME}_node
   rclcpp
 )
 
-add_executable(${PROJECT_NAME}_inertial_node src/LidarInertialOdometryNode.cpp)
-target_link_libraries(${PROJECT_NAME}_inertial_node 
+add_executable(${PROJECT_NAME}_odom_transform_node src/FasterTransformNode.cpp)
+target_link_libraries(${PROJECT_NAME}_odom_transform_node
   ${PROJECT_NAME}_lib
 )
-ament_target_dependencies(${PROJECT_NAME}_inertial_node
+ament_target_dependencies(${PROJECT_NAME}_odom_transform_node
   rclcpp
   sensor_msgs
-  nav_msgs
-  tf2_ros
-  tf2_eigen
-  tf2_geometry_msgs
-)
+  )
+# add_executable(${PROJECT_NAME}_inertial_node src/LidarInertialOdometryNode.cpp)
+# target_link_libraries(${PROJECT_NAME}_inertial_node 
+#   ${PROJECT_NAME}_lib
+# )
+
+# ament_target_dependencies(${PROJECT_NAME}_inertial_node
+#   rclcpp
+#   sensor_msgs
+#   nav_msgs
+#   tf2_ros
+#   tf2_eigen
+#   tf2_geometry_msgs
+# )
 
 # Install headers
 install(
@@ -113,7 +123,11 @@ install(
 
 # Install library and executables
 install(
-  TARGETS ${PROJECT_NAME}_lib ${PROJECT_NAME}_component ${PROJECT_NAME}_node ${PROJECT_NAME}_inertial_node
+  TARGETS ${PROJECT_NAME}_lib 
+  ${PROJECT_NAME}_component 
+  ${PROJECT_NAME}_node 
+  ${PROJECT_NAME}_odom_transform_node
+  #${PROJECT_NAME}_inertial_node
   EXPORT export_${PROJECT_NAME}
   LIBRARY DESTINATION lib
   ARCHIVE DESTINATION lib

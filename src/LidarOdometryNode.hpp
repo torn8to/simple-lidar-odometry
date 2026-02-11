@@ -3,7 +3,6 @@
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <rclcpp/rclcpp.hpp>
-#include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_broadcaster.h>
@@ -21,6 +20,8 @@
 #include "Pipeline.hpp"
 #include "tf2_sophus.hpp"
 
+#define DEBUG_STATE 1
+
 class LidarOdometryNode : public rclcpp::Node {
 public:
   explicit LidarOdometryNode(
@@ -35,11 +36,9 @@ public:
     declare_parameter("voxel_resolution_beta", 0.5);
     declare_parameter("max_points_per_voxel", 27);
     declare_parameter("odom_downsample", true);
-    declare_parameter("map_frame", "lid_odom");
     declare_parameter("child_frame", "base_link");
-    declare_parameter("lidar_frame", "lidar_link");
+    declare_parameter("odom_frame", "base_link");
     declare_parameter("base_frame", "base_link");
-    declare_parameter("odom_intgration", false);
     declare_parameter("position_covariance", 0.01);
     declare_parameter("orientation_covariance", 0.01);
 
@@ -48,6 +47,7 @@ public:
     declare_parameter("/threshold/fixed_threshold", 0.3);
     declare_parameter("/registration/num_iterations", 500);
     declare_parameter("/registration/convergence", 1e-4);
+
     // Get parameters
     config.max_distance = get_parameter("max_distance").as_double();
     config.voxel_factor = get_parameter("voxel_factor").as_double();
@@ -57,8 +57,6 @@ public:
         get_parameter("voxel_resolution_beta").as_double();
     config.max_points_per_voxel =
         get_parameter("max_points_per_voxel").as_int();
-    // config.imu_integration_enabled =
-    // get_parameter("imu_integration_enabled").as_bool();
     config.odom_downsample = get_parameter("odom_downsample").as_bool();
 
     config.initial_threshold =
@@ -71,10 +69,9 @@ public:
         get_parameter("/registration/num_iterations").as_int();
     config.convergence = get_parameter("/registration/convergence").as_double();
 
-    odom_frame_id_ = get_parameter("map_frame").as_string();
+    odom_frame_id_ = get_parameter("odom_frame").as_string();
     child_frame_id_ = get_parameter("child_frame").as_string();
     base_frame_id_ = get_parameter("base_frame").as_string();
-    lidar_link_id_ = get_parameter("lidar_frame").as_string();
     publish_transform_ = get_parameter("publish_transform").as_bool();
     debug_ = get_parameter("debug").as_bool();
 
@@ -98,12 +95,10 @@ public:
         this->create_publisher<sensor_msgs::msg::PointCloud2>("cloud", 10);
 
     lidar_pose_acquired = false;
-    imu_pose_acquired = false;
 
     linear_velocity_ = Eigen::Vector3d::Zero();
     angular_velocity_ = Eigen::Vector3d::Zero();
 
-    has_first_imu_message = false;
     has_last_lidar_time = false;
 
     last_lidar_pose_ = Sophus::SE3d();
@@ -116,6 +111,7 @@ private:
   void pointCloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
 
     rclcpp::Time current_time = msg->header.stamp;
+    lidar_link_id_ = msg->header.frame_id;
     // set pose biasses
     std::vector<Eigen::Vector3d> points = cloud::convertMsgToCloud(msg);
     std::vector<double> timestamps = cloud::extractTimestampsFromCloudMsg(msg);
@@ -129,7 +125,6 @@ private:
         lidar_pose_rel_to_base_ = tf2::transformToSophus(transform_stamped);
         lidar_pose_acquired = true;
       }
-
       catch (const std::exception &e) {
         RCLCPP_ERROR(get_logger(),
                      "Failed to lookup transform from %s to %s: %s",
@@ -154,33 +149,59 @@ private:
       unskewed_points = transformed_points;
     }
 
-    std::tuple<Sophus::SE3d, Sophus::SE3d, std::vector<Eigen::Vector3d>> result =
-        pipeline_->odometryUpdate(unskewed_points, last_lidar_pose_, false);
-    Sophus::SE3d updated_pose = std::get<0>(result);
-    Sophus::SE3d::Tangent twist = std::get<1>(result);
-    twist= twist/(current_time - last_lidar_time);
+    auto [updated_pose, pose_diff, cloud_voxel_mapping] = pipeline_->odometryUpdate(unskewed_points, last_lidar_pose_, false);
+    
+    pose_diff_ = pose_diff;
+    last_lidar_pose_ = updated_pose;
+    
+    Sophus::SE3d::Tangent twist = pose_diff.log();
+    if(current_time.get_clock_type() == last_lidar_time_.get_clock_type()){
+      twist = twist/(current_time - last_lidar_time_).seconds();
+    } else{
+      twist = twist * 0;
+    } publishOdometry(msg->header.stamp, updated_pose, twist);
 
-    publishOdometry(msg->header.stamp, updated_pose, twist);
     auto new_cloud_msg = std::make_shared<sensor_msgs::msg::PointCloud2>(*msg);
     cloud_pub_->publish(
         *new_cloud_msg); // publish new cloud message for performance updates
 
+    #if DEBUG_STATE
+    RCLCPP_INFO(get_logger(), 
+                "DEBUG_STATE:\n"
+                "Raw points: %zu\n"
+                "Downsampled points: %zu\n"
+                "Original pose: [%f, %f, %f | %f, %f, %f, %f]\n"
+                "Original twist: [dx: %f, dy: %f, dz: %f, rx: %f, ry: %f, rz: %f]\n"
+                "Updated pose: [%f, %f, %f | %f, %f, %f, %f]\n"
+                "Updated twist: [%f, %f, %f, %f, %f, %f]",
+                points.size(),
+                unskewed_points.size(), last_lidar_pose_.translation().x(), last_lidar_pose_.translation().y(), last_lidar_pose_.translation().z(), last_lidar_pose_.unit_quaternion().x(), last_lidar_pose_.unit_quaternion().y(), last_lidar_pose_.unit_quaternion().z(), last_lidar_pose_.unit_quaternion().w(),
+                pose_diff_.translation().x(), pose_diff_.translation().y(), pose_diff_.translation().z(),
+                pose_diff_.so3().log()[0], pose_diff_.so3().log()[1], pose_diff_.so3().log()[2],
+                updated_pose.translation().x(), updated_pose.translation().y(), updated_pose.translation().z(),
+                updated_pose.unit_quaternion().x(), updated_pose.unit_quaternion().y(), updated_pose.unit_quaternion().z(), updated_pose.unit_quaternion().w(),
+                twist.head<3>()[0], twist.head<3>()[1], twist.head<3>()[2],
+                twist.tail<3>()[0], twist.tail<3>()[1], twist.tail<3>()[2]
+    );
+
+    #endif
+
     if (debug_) {
-      this->publishDebug(std::get<1>(result));
+      this->publishDebug(cloud_voxel_mapping);
     }
     last_lidar_time_ = current_time;
   }
 
   void publishDebug(const std::vector<Eigen::Vector3d> &cloud) {
     if (!pipeline_->mapEmpty()) {
-      std::vector<Eigen::Vector3d> map = pipeline_->getMap();
-      std::vector<Eigen::Vector3d> map_relative_pose =
-          transformPointCloud(map, pipeline_->position().inverse());
+      std::vector<Eigen::Vector3d> map_points = pipeline_->getMap();
+      //std::vector<Eigen::Vector3d> map_relative_pose =
+      //    transformPointCloud(map, pipeline_->position().inverse());
       sensor_msgs::msg::PointCloud2::SharedPtr map_msg =
           std::make_shared<sensor_msgs::msg::PointCloud2>();
       map_msg->header.stamp = this->now();
-      map_msg->header.frame_id = base_frame_id_;
-      cloud::convertCloudToMsg(map_relative_pose, map_msg);
+      map_msg->header.frame_id = odom_frame_id_;
+      cloud::convertCloudToMsg(map_points, map_msg);
       map_pub_->publish(*map_msg);
     }
     // sensor_msgs::msg::PointCloud2::SharedPtr cloud_msg =
@@ -224,12 +245,12 @@ private:
     odom_msg->pose.pose.orientation.y = quat.y();
     odom_msg->pose.pose.orientation.z = quat.z();
 
-    odom_msg->twist.twist.linear.x = twist(0);
-    odom_msg->twist.twist.linear.y = twist(1);
-    odom_msg->twist.twist.linear.z = twist(2);
-    odom_msg->twist.twist.angular.x = twist(3);
-    odom_msg->twist.twist.angular.y = twist(4);
-    odom_msg->twist.twist.angular.z = twist(5);
+    odom_msg->twist.twist.linear.x = twist[0];
+    odom_msg->twist.twist.linear.y = twist[1];
+    odom_msg->twist.twist.linear.z = twist[2];
+    odom_msg->twist.twist.angular.x = twist[3];
+    odom_msg->twist.twist.angular.y = twist[4];
+    odom_msg->twist.twist.angular.z = twist[5];
     odom_pub_->publish(std::move(odom_msg));
     if (publish_transform_) {
       geometry_msgs::msg::TransformStamped transform_stamped =
@@ -243,15 +264,9 @@ private:
 
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr
       point_cloud_sub_;
-  rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr map_pub_;
   rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr cloud_pub_;
-
-  rclcpp::CallbackGroup::SharedPtr imu_callback_group_;
-  rclcpp::SubscriptionOptions imu_subscription_options_;
-
-  std::vector<std::pair<Sophus::SE3d, double>> imu_pose_diff_queue;
 
   Eigen::Vector3d linear_velocity_;
   Eigen::Vector3d angular_velocity_;
@@ -270,21 +285,16 @@ private:
   rclcpp::Time last_time_;
   rclcpp::Time last_lidar_time_;
   Sophus::SE3d lidar_pose_rel_to_base_;
-  Sophus::SE3d imu_pose_rel_to_base_;
 
   Sophus::SE3d pose_diff_; // latest fused pose between prediction and lidar_data
-  Sophus::SE3d current_lidar_pose; // latest fused pose between imu and lidar_data
   Sophus::SE3d last_lidar_pose_;
 
   std::string odom_frame_id_;
   std::string child_frame_id_;
   std::string lidar_link_id_;
-  std::string imu_frame_id_;
   std::string base_frame_id_;
 
-  bool has_first_imu_message;
   bool has_last_lidar_time;
-  bool imu_pose_acquired;
   bool lidar_pose_acquired;
   bool publish_transform_;
   bool debug_;

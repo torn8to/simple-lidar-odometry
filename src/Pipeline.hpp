@@ -25,6 +25,8 @@ struct PipelineConfig {
   double min_motion_threshold =  0.1;
   double fixed_threshold = -1.0;
   int lfu_prune_interval = 20;
+  bool initial_sampling_factor = 0.2;// when the map is empty use a smaller voxel sampling size to add to the map to reduce warm up time
+  bool initial_sample_reduce = true;
 };
 
 class Pipeline {
@@ -131,8 +133,8 @@ private:
   int max_points_per_voxel_;
   bool odom_voxel_downsample_;
   VoxelMap voxel_map_;
-  int lfu_prune_counter_; // Counter to track when to prune via LFU
-  int lfu_prune_interval_; // Interval for LFU pruning
+  bool initial_sample_enable_;
+  bool initial_sampling_ratio_;
 };
 
 } // namespace cloud

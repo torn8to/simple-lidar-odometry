@@ -19,34 +19,43 @@ Pipeline::Pipeline(const PipelineConfig &config)
     config.max_points_per_voxel),
     threshold(config.initial_threshold, config.min_motion_threshold, config.max_distance),
     fixed_threshold_(config.fixed_threshold),
-    lfu_prune_counter_(0),
-    lfu_prune_interval_(config.lfu_prune_interval){}
+    initial_sample_enable_(config.initial_sample_reduce),
+    initial_sampling_ratio_(config.initial_sampling_factor){}
+
 
 Pipeline::~Pipeline() {
   // Cleanup if needed
 }
 
-
 std::tuple<Sophus::SE3d, Sophus::SE3d, std::vector<Eigen::Vector3d>> Pipeline::odometryUpdate(std::vector<Eigen::Vector3d> &cloud,
                                            const Sophus::SE3d &external_guess,
                                            bool use_external_guess){
   std::vector<Eigen::Vector3d> cloud_voxel_odom;
+
   if (odom_voxel_downsample_){
-    cloud_voxel_odom = voxelDownsample(cloud, max_distance_ / voxel_factor_ * voxel_resolution_beta_);
+    double downsample_size = max_distance_ / voxel_factor_ * voxel_resolution_alpha_;
+    cloud_voxel_odom = voxelDownsample(cloud, downsample_size);
   }
   else{
     cloud_voxel_odom = cloud;
   }
-  std::vector<Eigen::Vector3d> cloud_voxel_mapping = voxelDownsample(cloud,max_distance_ / voxel_factor_ * voxel_resolution_alpha_);
+
+  double map_voxel_sample_size = max_distance_/voxel_factor_ * voxel_resolution_beta_;
+  //if(voxel_map.empty()) [[unlikely]]{
+  if(voxel_map_.empty()) { // run the if statemnt the first time
+    map_voxel_sample_size =  initial_sample_enable_ ? map_voxel_sample_size * initial_sampling_ratio_ : map_voxel_sample_size;
+  }
+  std::vector<Eigen::Vector3d> cloud_voxel_mapping = voxelDownsample(cloud, map_voxel_sample_size);
 
   Sophus::SE3d initial_guess;
+
   if (use_external_guess){
     initial_guess = external_guess;
   }else{
     initial_guess = position() * pose_diff_;
   }
-  double sigma;
 
+  double sigma;
   if (fixed_threshold_ < 0.0){
     sigma = threshold.computeThreshold();// adpative thresholding for kiss icp
    }else{
@@ -67,10 +76,10 @@ std::tuple<Sophus::SE3d, Sophus::SE3d, std::vector<Eigen::Vector3d>> Pipeline::o
   
   pose_diff_ = position().inverse() * new_position;
   updatePosition(new_position);
-
   voxel_map_.addPoints(cloud_voxel_mapping_transformed);
+
   voxel_map_.removePointsFarFromOrigin(new_position.translation());
-  return std::make_tuple(new_position, pose_diff_ cloud_voxel_mapping);
+  return std::make_tuple(new_position, pose_diff_, cloud_voxel_mapping);
 }
 
 
